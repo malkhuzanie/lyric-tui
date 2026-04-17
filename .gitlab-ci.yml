@@ -1,0 +1,52 @@
+# Cache Cargo registry and target folders to drastically speed up future builds
+variables:
+  CARGO_HOME: $CI_PROJECT_DIR/.cargo_cache
+
+cache:
+  # Using the lockfile as the key ensures the cache resets when dependencies change
+  key:
+    files:
+      - Cargo.lock
+  paths:
+    - .cargo_cache/bin/
+    - .cargo_cache/registry/index/
+    - .cargo_cache/registry/cache/
+    - .cargo_cache/git/db/
+    - target/
+
+stages:
+  - build
+
+# ── Linux Build Job ──────────────────────────────────────────────────────────
+build_linux:
+  stage: build
+  image: rust:latest
+  before_script:
+    # Install the D-Bus headers required by your mpris dependency [cite: 69]
+    - apt-get update && apt-get install -y libdbus-1-dev
+  script:
+    - cargo build --release
+    # Move the generated man page to a predictable location for the artifacts
+    - find target/release/build -name "lyt.1" -exec cp {} . \;
+  artifacts:
+    name: "lyric-tui-linux"
+    paths:
+      - target/release/lyt   
+      - lyt.1               
+    expire_in: 1 week
+
+# ── Windows Build Job ────────────────────────────────────────────────────────
+build_windows:
+  stage: build
+  image: rust:latest
+  before_script:
+    # Install cargo-xwin to handle MSVC linking [cite: 1]
+    - cargo install cargo-xwin || true
+    - rustup target add x86_64-pc-windows-msvc
+  script:
+    - cargo xwin build --release --target x86_64-pc-windows-msvc
+  artifacts:
+    name: "lyric-tui-windows"
+    paths:
+      - target/x86_64-pc-windows-msvc/release/lyt.exe 
+    expire_in: 1 week

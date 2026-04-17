@@ -1,0 +1,53 @@
+[package]
+name = "lyric-tui"  
+version = "0.1.0"
+edition = "2024"
+authors = ["Tomato"]
+description = "A robust MPRIS lyrics fetcher for the terminal"
+
+[dependencies]
+# TUI Framework
+ratatui = "0.26"
+crossterm = { version = "0.27", features = ["event-stream"] }
+
+# Async Runtime & Streams
+tokio = { version = "1.37", features = ["full"] }
+futures = "0.3"
+
+# Networking & JSON
+reqwest = { version = "0.12", features = ["json"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+urlencoding = "2.1"
+regex = "1.10"
+
+# Caching and Utilities
+directories = "5.0"
+anyhow = "1.0"
+
+log = "0.4"
+simplelog = "0.12"
+scraper = "0.26.0"
+select = "0.6.1"
+toml = "1.1.2"
+async-trait = "0.1.89"
+
+clap = { version = "4.6", features = ["derive"] }
+
+[target.'cfg(target_os = "windows")'.dependencies]
+windows = { version = "0.56", features = ["Media_Control", "Foundation", "Foundation_Collections", "Win32_System_Com"] }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+mediaremote-rs = "0.1"
+
+# MPRIS (D-Bus)
+[target.'cfg(target_os = "linux")'.dependencies]
+mpris = "2.0"
+
+[[bin]]
+name = "lyt"        
+path = "src/main.rs"
+
+[build-dependencies]
+clap = { version = "4.6", features = ["derive"] }
+clap_mangen = "0.3.0"

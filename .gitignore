@@ -1,0 +1,5 @@
+target/
+lyric-tui.log
+.idea/
+.ppignore
+.cargo/
