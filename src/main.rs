@@ -237,8 +237,11 @@ async fn main() -> anyhow::Result<()> {
     loop {
         // Keep viewport height in sync with terminal size.
         // Header (3 rows) + footer (3 rows) = 6 rows of chrome.
+        // Block border takes 2 rows, so available is size.height - 8.
         let size = terminal.size()?;
-        let new_height = size.height.saturating_sub(6);
+        let available_height = size.height.saturating_sub(8);
+        let new_height = available_height.min(app.config.view.max_lines);
+        
         if new_height != app.view.viewport_height {
             app.view.viewport_height = new_height;
             app.recalculate_scroll();

@@ -2,8 +2,12 @@
 name = "lyric-tui"  
 version = "0.1.0"
 edition = "2024"
-authors = ["Tomato"]
-description = "A robust MPRIS lyrics fetcher for the terminal"
+authors = ["Mohammed Alkhuzanie"]
+description = "A robust, cross-platform terminal utility for fetching synchronised lyrics."
+license = "MIT"
+repository = "https://gitlab.com/malkhuzanie/lyric-tui"
+keywords = ["mpris", "lyrics", "tui", "music", "karaoke"]
+categories = ["command-line-utilities", "multimedia"]
 
 [dependencies]
 # TUI Framework

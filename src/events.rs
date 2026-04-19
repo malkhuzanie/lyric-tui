@@ -46,7 +46,7 @@ fn handle_normal(key: KeyEvent, app: &mut App) -> (bool, Option<AppCommand>) {
         KeyCode::Up | KeyCode::Char('k') => app.scroll_up(),
 
         // ── Auto-scroll toggle ────────────────────────────────────────────────
-        KeyCode::Char('a') => app.view.auto_scroll = !app.view.auto_scroll,
+        KeyCode::Char('a') => app.toggle_auto_scroll(),
 
         // ── Alignment toggle ──────────────────────────────────────────────────
         KeyCode::Char('c') => {

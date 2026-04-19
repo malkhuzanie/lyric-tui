@@ -6,20 +6,19 @@ Written in Rust, it solves the fragility of traditional regex-based web scrapers
 
 ## Features
 
-- **Karaoke-Style Auto-Scrolling:** Parses time-synced `.lrc` lyrics to automatically scroll and highlight the currently playing line in real-time.
-    
-- **Zero-Block Async:** Built on `tokio`, the UI remains completely responsive at 60fps even while waiting for network requests.
-    
-- **Robust Provider Fallbacks:** Relies on the LRCLIB REST API by default for synchronized lyrics, with the option to dynamically switch to a Genius text fallback.
-    
-- **Manual Search & Alignment:** Easily search for arbitrary songs dynamically or toggle center/left text alignment to fit your setup.
-    
-- **Local Caching:** Automatically caches fetched lyrics locally using native XDG directories to save bandwidth and load instantly on replays.
-    
-- **Modern TUI:** Built with `ratatui`, featuring a clean, rounded-border aesthetic, progress bars, responsive text wrapping, and interactive popup menus.
-    
-- **Cross-Platform & Live Player Switching:** Dynamically detect and switch between active media clients at runtime using a built-in menu.
-    
+- **Karaoke-Style Auto-Scrolling:** Parses time-synchronised \.lrc` files to scroll automatically and highlight the active lyric in real time.
+- **Non-Blocking Asynchronous Architecture:** Built upon \tokio`, the interface maintains a fluid 60 frames per second, remaining entirely responsive whilst awaiting network requests.
+- **Robust Provider Fallbacks:** Relies upon the LRCLIB REST API by default for synchronised lyrics, providing the facility to switch dynamically to a Genius text fallback should the primary provider fail.
+- **Manual Search Facility:** Dynamically search for arbitrary tracks with ease.
+- **Customisable Typography:** Toggle between left-aligned and centred text to suit your visual preference.
+- **Intelligent Local Caching:** Automatically caches retrieved lyrics within native XDG directories; this conserves bandwidth and ensures instantaneous loading upon subsequent playbacks.
+- **Contemporary Terminal Interface:** Built with `ratatui`, the application boasts a clean, rounded-border aesthetic, accompanied by progress bars, responsive text wrapping, and interactive pop-up menus.
+- **Cross-Platform Compatibility & Live Player Switching:** Dynamically detect and transition between active media clients at runtime via an integrated menu, supporting MPRIS (Linux), GSMTC (Windows), and MediaRemote (macOS).
+
+## Known Limitations & Disclaimers
+
+- **Genius Provider:** Whilst implemented, the Genius service is heavily shielded by Cloudflare's automated security measures. Consequently, queries to Genius may frequently fail or be intercepted. LRCLIB remains the recommended default provider.
+- **macOS Support:** The macOS daemon integration (\mediaremote-rs`) has been implemented; however, it is currently unverified and remains in a beta testing phase.
 
 ## Quick Start
 
@@ -91,3 +90,6 @@ We have comprehensive documentation available in the `docs/` folder:
 - **Caching:** Lyrics are automatically saved in your user cache directory (e.g., `~/.cache/lyric-tui/`). You can clear this directory safely at any time to remove saved lyrics.
     
 - **Logs:** A `lyric-tui.log` file is generated in the directory where the app is executed, providing detailed debug information mapping out the metadata and requests.
+
+## License
+This project is distributed under the MIT License. For comprehensive legal details, please consult the LICENSE file residing within the repository root.

@@ -3,3 +3,5 @@ lyric-tui.log
 .idea/
 .ppignore
 .cargo/
+AGENTS.md
+COMMIT_DRAFT.txt

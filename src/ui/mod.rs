@@ -22,32 +22,31 @@ pub mod select_player;
 
 use crate::app::{App, AppMode};
 use ratatui::{
-    layout::{Constraint, Direction, Layout, Rect, Alignment},
-    widgets::{Block, Borders, Clear, Paragraph},
-    style::{Style, Color},
-    text::{Line, Span},
+    layout::{Constraint, Direction, Layout},
     Frame,
 };
 
-/// Helper to render popups centered
-fn centered_rect(percent_x: u16, percent_y: u16, r: Rect) -> Rect {
-    let popup_layout = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([
-            Constraint::Percentage((100 - percent_y) / 2),
-            Constraint::Percentage(percent_y),
-            Constraint::Percentage((100 - percent_y) / 2),
-        ])
-        .split(r);
-
-    Layout::default()
-        .direction(Direction::Horizontal)
-        .constraints([
-            Constraint::Percentage((100 - percent_x) / 2),
-            Constraint::Percentage(percent_x),
-            Constraint::Percentage((100 - percent_x) / 2),
-        ])
-        .split(popup_layout[1])[1]
+pub fn wrap_text(text: &str, width: usize) -> Vec<String> {
+    let mut lines = Vec::new();
+    let mut current_line = String::new();
+    for word in text.split_whitespace() {
+        if current_line.is_empty() {
+            current_line.push_str(word);
+        } else if current_line.len() + 1 + word.len() > width {
+            lines.push(current_line);
+            current_line = word.to_string();
+        } else {
+            current_line.push(' ');
+            current_line.push_str(word);
+        }
+    }
+    if !current_line.is_empty() {
+        lines.push(current_line);
+    }
+    if lines.is_empty() {
+        lines.push(String::new());
+    }
+    lines
 }
 
 /// Entry point called from the main render loop.
@@ -68,17 +67,13 @@ pub fn render(f: &mut Frame, app: &App) {
     match app.mode() {
         AppMode::Normal => {}
         AppMode::Help => {
-            let area = centered_rect(40, 50, f.size()); 
-            f.render_widget(Clear, area); 
-            help::render(f, area);
+            help::render(f, f.size());
         }
         AppMode::Search => {
-            let area = centered_rect(60, 20, f.size());
-            search::render(f, app, area);
+            search::render(f, app, f.size());
         }
         AppMode::SelectPlayer => {
-            let area = centered_rect(50, 40, f.size());
-            select_player::render(f, app, area);
+            select_player::render(f, app, f.size());
         }
     }
 }

@@ -13,7 +13,7 @@
 /// tucked into the border rather than stealing a dedicated row.
 use crate::app::App;
 use ratatui::{
-    layout::{Alignment, Rect},
+    layout::{Alignment, Constraint, Flex, Layout, Rect},
     text::{Line, Span},
     widgets::{block::Title, Block, BorderType, Borders, Paragraph, Wrap},
     Frame,
@@ -22,9 +22,8 @@ use ratatui::{
 use super::theme;
 
 // Glyphs — defined once, easy to swap
-const PLAYHEAD: &str = "▶ ";
 const PLAYHEAD_SPACE: &str = "  "; // same width when no playhead
-const SEPARATOR: &str = "·";
+const SEPARATOR: &str = "";
 
 /// Renders the lyrics pane into `area`.
 pub fn render(f: &mut Frame, app: &App, area: Rect) {
@@ -32,6 +31,8 @@ pub fn render(f: &mut Frame, app: &App, area: Rect) {
     let lines = build_lyric_lines(app, has_sync, &app.config.view.alignment);
 
     let block = build_block(app);
+    let inner_area = block.inner(area);
+    f.render_widget(block, area);
 
     let alignment = match app.config.view.alignment {
         crate::app::LyricAlignment::Left => Alignment::Left,
@@ -41,10 +42,17 @@ pub fn render(f: &mut Frame, app: &App, area: Rect) {
     let paragraph = Paragraph::new(lines)
         .alignment(alignment)
         .wrap(Wrap { trim: false })
-        .scroll((app.view.scroll, 0))
-        .block(block);
+        .scroll((app.view.scroll, 0));
 
-    f.render_widget(paragraph, area);
+    let [vertical_centered] = Layout::vertical([Constraint::Max(app.config.view.max_lines)])
+        .flex(Flex::Center)
+        .areas(inner_area);
+        
+    let [centered_area] = Layout::horizontal([Constraint::Max(app.config.view.max_width)])
+        .flex(Flex::Center)
+        .areas(vertical_centered);
+
+    f.render_widget(paragraph, centered_area);
 }
 
 // ── Line builder ─────────────────────────────────────────────────────────────
@@ -56,12 +64,18 @@ fn build_lyric_lines<'a>(
 ) -> Vec<Line<'a>> {
     let show_chrome = matches!(alignment, crate::app::LyricAlignment::Left);
 
+    let active_line_idx = if app.view.auto_scroll {
+        app.playback.active_line
+    } else {
+        app.view.manual_active_line
+    };
+
     app.lyrics
         .iter()
         .enumerate()
         .map(|(i, line)| {
-            let is_active = has_sync && i == app.playback.active_line;
-            let is_past = has_sync && i < app.playback.active_line;
+            let is_active = has_sync && i == active_line_idx;
+            let is_past = has_sync && i < active_line_idx;
 
             let text_style = if !has_sync {
                 theme::lyric_plain()

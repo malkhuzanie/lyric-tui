@@ -17,6 +17,10 @@ static LRC_REGEX: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"^\[(\d{2}):(\d{2})\.(\d{2,3})\](.*)").expect("Hard-coded LRC regex is valid")
 });
 
+static STRIP_REGEX: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"\[.*?\]|\(.*?\)").expect("Hard-coded strip regex is valid")
+});
+
 // ── Provider ──────────────────────────────────────────────────────────────────
 
 pub struct LrclibProvider {
@@ -118,29 +122,66 @@ impl LyricProvider for LrclibProvider {
         );
 
         let response = self.client.get(&url).send().await?;
+        let data: LrcResponse;
 
         if response.status() == 404 {
-            return Ok(parse_lrc("Lyrics not found in LRCLIB database."));
-        }
+            // The strict `/api/get` endpoint failed to locate the track. 
+            // We now employ a fallback strategy: querying the `/api/search` endpoint 
+            // with a concatenated query string. This fuzzy search mitigates issues 
+            // where metadata contains extraneous tags (e.g., "[Official Video]").
+            log::info!("LRCLIB exact match failed. Attempting fuzzy search for: {} {}", artist, title);
+            let raw_query = format!("{} {}", artist, title);
+            let stripped_query = STRIP_REGEX.replace_all(&raw_query, "");
+            let query = stripped_query.split_whitespace().collect::<Vec<_>>().join(" ");
+            
+            let search_url = format!(
+                "https://lrclib.net/api/search?q={}",
+                urlencoding::encode(&query)
+            );
 
-        if !response.status().is_success() {
+            let search_response = self.client.get(&search_url).send().await?;
+            if !search_response.status().is_success() {
+                return Ok(parse_lrc(&format!(
+                    "Network error: HTTP {}",
+                    search_response.status()
+                )));
+            }
+
+            let search_text = search_response.text().await?;
+            let search_results: Vec<LrcResponse> = match serde_json::from_str(&search_text) {
+                Ok(v) => v,
+                Err(e) => {
+                    log::error!(
+                        "Failed to decode LRCLIB search JSON. Error: {}. Body: {}",
+                        e, search_text
+                    );
+                    return Err(e.into());
+                }
+            };
+
+            if let Some(first_match) = search_results.into_iter().next() {
+                data = first_match;
+            } else {
+                return Ok(parse_lrc("Lyrics not found in LRCLIB database."));
+            }
+        } else if !response.status().is_success() {
             return Ok(parse_lrc(&format!(
                 "Network error: HTTP {}",
                 response.status()
             )));
+        } else {
+            let res_text = response.text().await?;
+            data = match serde_json::from_str(&res_text) {
+                Ok(v) => v,
+                Err(e) => {
+                    log::error!(
+                        "Failed to decode LRCLIB JSON. Error: {}. Body: {}",
+                        e, res_text
+                    );
+                    return Err(e.into());
+                }
+            };
         }
-
-        let res_text = response.text().await?;
-        let data: LrcResponse = match serde_json::from_str(&res_text) {
-            Ok(v) => v,
-            Err(e) => {
-                log::error!(
-                    "Failed to decode LRCLIB JSON. Error: {}. Body: {}",
-                    e, res_text
-                );
-                return Err(e.into());
-            }
-        };
 
         let lyrics_text = data
             .synced_lyrics

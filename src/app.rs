@@ -40,6 +40,8 @@ pub struct ViewConfig {
     pub default_provider: Provider,
     pub alignment: LyricAlignment,
     pub playhead_symbol: String,
+    pub max_width: u16,
+    pub max_lines: u16,
 }
 
 impl Default for ViewConfig {
@@ -48,6 +50,8 @@ impl Default for ViewConfig {
             default_provider: Provider::Lrclib,
             alignment: LyricAlignment::Left,
             playhead_symbol: "▶ ".to_string(),
+            max_width: 80,
+            max_lines: 24,
         }
     }
 }
@@ -152,6 +156,7 @@ pub struct ViewState {
     pub max_scroll: u16,
     pub viewport_height: u16,
     pub auto_scroll: bool,
+    pub manual_active_line: usize,
 }
 
 impl Default for ViewState {
@@ -161,6 +166,7 @@ impl Default for ViewState {
             max_scroll: 0,
             viewport_height: 0,
             auto_scroll: true, // on by default
+            manual_active_line: 0,
         }
     }
 }
@@ -215,13 +221,38 @@ impl App {
     // ── Scroll helpers ────────────────────────────────────────────────────────
 
     pub fn scroll_down(&mut self) {
-        self.view.auto_scroll = false;
-        self.view.scroll = self.view.scroll.saturating_add(1).min(self.view.max_scroll);
+        if self.view.auto_scroll {
+            self.view.manual_active_line = self.playback.active_line;
+            self.view.auto_scroll = false;
+        }
+        self.view.manual_active_line = self.view.manual_active_line.saturating_add(1).min(self.lyrics.len().saturating_sub(1));
+        
+        let half_viewport = self.view.viewport_height / 2;
+        let target_scroll = (self.view.manual_active_line as u16).saturating_sub(half_viewport);
+        self.view.scroll = target_scroll.min(self.view.max_scroll);
     }
 
     pub fn scroll_up(&mut self) {
-        self.view.auto_scroll = false;
-        self.view.scroll = self.view.scroll.saturating_sub(1);
+        if self.view.auto_scroll {
+            self.view.manual_active_line = self.playback.active_line;
+            self.view.auto_scroll = false;
+        }
+        self.view.manual_active_line = self.view.manual_active_line.saturating_sub(1);
+        
+        let half_viewport = self.view.viewport_height / 2;
+        let target_scroll = (self.view.manual_active_line as u16).saturating_sub(half_viewport);
+        self.view.scroll = target_scroll.min(self.view.max_scroll);
+    }
+
+    pub fn toggle_auto_scroll(&mut self) {
+        self.view.auto_scroll = !self.view.auto_scroll;
+        if self.view.auto_scroll {
+            let half_viewport = self.view.viewport_height / 2;
+            let target_scroll = (self.playback.active_line as u16).saturating_sub(half_viewport);
+            self.view.scroll = target_scroll.min(self.view.max_scroll);
+        } else {
+            self.view.manual_active_line = self.playback.active_line;
+        }
     }
 
     /// Must be called after `self.lyrics` is replaced so that `max_scroll` and
