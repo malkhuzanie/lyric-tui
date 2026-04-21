@@ -1,12 +1,12 @@
 use crate::app::{AppEvent, TrackInfo};
 use super::common::clean_title;
-use log::{error, info};
+use log::{error, info, debug, trace};
 use std::sync::{Arc, RwLock};
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tokio::sync::mpsc::Sender;
 use regex::Regex;
-use windows::Media::Control::GlobalSystemMediaTransportControlsSessionManager;
+use windows::Media::Control::{GlobalSystemMediaTransportControlsSessionManager, GlobalSystemMediaTransportControlsSessionPlaybackStatus};
 
 const POLL_INTERVAL: Duration = Duration::from_millis(1000); // 1 second for windows to minimize overhead
 
@@ -36,7 +36,8 @@ pub fn start(target_player: Arc<RwLock<Option<String>>>, tx: Sender<AppEvent>) {
             }
         };
 
-        let mut current_track: Option<TrackInfo> = None;
+        let mut tracker = super::common::TimelineTracker::new();
+        let mut last_raw_pos: i64 = 0;
 
         loop {
             let target = target_player.read().unwrap().clone();
@@ -70,12 +71,6 @@ pub fn start(target_player: Arc<RwLock<Option<String>>>, tx: Sender<AppEvent>) {
                 }
                 let _ = tx.blocking_send(AppEvent::PlayersDiscovered(available_players));
 
-                if let Ok(timeline) = session.GetTimelineProperties() {
-                    let pos = timeline.Position().unwrap_or_default();
-                    let pos_duration = Duration::from_nanos((pos.Duration as u64) * 100);
-                    let _ = tx.blocking_send(AppEvent::PositionUpdated(pos_duration));
-                }
-
                 if let Ok(props_op) = session.TryGetMediaPropertiesAsync() {
                     if let Ok(props) = props_op.get() {
                         let raw_title = props.Title().unwrap_or_default().to_string_lossy();
@@ -108,13 +103,59 @@ pub fn start(target_player: Arc<RwLock<Option<String>>>, tx: Sender<AppEvent>) {
                                 length: length,
                             };
 
-                            if Some(&new_track) != current_track.as_ref() {
+                            let current_raw = if let Ok(timeline) = session.GetTimelineProperties() {
+                                Duration::from_nanos((timeline.Position().unwrap_or_default().Duration as u64) * 100)
+                            } else {
+                                Duration::ZERO
+                            };
+
+                            if tracker.process_track_change(new_track.clone(), current_raw) {
                                 info!("Track changed [RAW MPIS]: artist: {:?}, title: {:?}", raw_artist, raw_title);
                                 info!("Track changed [CLEANED]: {:?}", new_track);
-                                current_track = Some(new_track.clone());
                                 let _ = tx.blocking_send(AppEvent::TrackChanged(new_track));
                             }
                         }
+                    }
+                }
+
+                if let Ok(timeline) = session.GetTimelineProperties() {
+                    let raw_pos = timeline.Position().unwrap_or_default().Duration;
+                    
+                    let mut pos = tracker.calculate_adjusted_position(Duration::from_nanos((raw_pos as u64) * 100)).as_nanos() as i64 / 100;
+                    
+                    // Windows interpolates real-time via SystemTime since `Position` is a snapshot
+                    if let Ok(playback_info) = session.GetPlaybackInfo() {
+                        if let Ok(status) = playback_info.PlaybackStatus() {
+                            if status == GlobalSystemMediaTransportControlsSessionPlaybackStatus::Playing {
+                                if let Ok(last_updated) = timeline.LastUpdatedTime() {
+                                    if let Ok(now_since_epoch) = SystemTime::now().duration_since(UNIX_EPOCH) {
+                                        // Windows FILETIME epoch: Jan 1, 1601. Unix epoch: Jan 1, 1970.
+                                        // Difference in 100-nanosecond intervals: 116444736000000000
+                                        let now_100ns = (now_since_epoch.as_nanos() / 100) as i64 + 116444736000000000;
+                                        let updated_100ns = last_updated.UniversalTime;
+                                        
+                                        let diff = now_100ns - updated_100ns;
+                                        if diff > 0 && diff < 86_400_000_000 { // Max 24h sanity check
+                                            pos += diff;
+                                        }
+                                        trace!("Syncing Windows position: last_updated={} now={} pos={} (raw={} offset={:?})", 
+                                              updated_100ns, now_100ns, pos, raw_pos, tracker.track_start_offset);
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    if let Ok(end_time) = timeline.EndTime() {
+                        if end_time.Duration > 0 && pos > end_time.Duration {
+                            pos = end_time.Duration;
+                        }
+                    }
+
+                    // Avoid sending negative or zero positions erroneously.
+                    if pos > 0 {
+                        let pos_duration = Duration::from_nanos((pos as u64) * 100);
+                        let _ = tx.blocking_send(AppEvent::PositionUpdated(pos_duration));
                     }
                 }
             }

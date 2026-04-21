@@ -11,7 +11,7 @@ const POLL_INTERVAL: Duration = Duration::from_millis(1000);
 
 pub fn start(target_player: Arc<RwLock<Option<String>>>, tx: Sender<AppEvent>) {
     thread::spawn(move || {
-        let mut current_track: Option<TrackInfo> = None;
+        let mut tracker = super::common::TimelineTracker::new();
 
         loop {
             // Using mediaremote-rs or now-playing equivalent
@@ -42,16 +42,17 @@ pub fn start(target_player: Arc<RwLock<Option<String>>>, tx: Sender<AppEvent>) {
                             length: info.duration.map(Duration::from_secs_f64),
                         };
 
-                        if Some(&new_track) != current_track.as_ref() {
+                        let current_raw = Duration::from_secs_f64(info.elapsed_time.unwrap_or(0.0));
+                        if tracker.process_track_change(new_track.clone(), current_raw) {
                             info!("Track changed [RAW MPIS]: artist: {:?}, title: {:?}", raw_artist, raw_title);
                             info!("Track changed [CLEANED]: {:?}", new_track);
-                            current_track = Some(new_track.clone());
                             let _ = tx.blocking_send(AppEvent::TrackChanged(new_track));
                         }
                     }
 
-                    if let Some(pos) = info.elapsed_time {
-                        let _ = tx.blocking_send(AppEvent::PositionUpdated(Duration::from_secs_f64(pos)));
+                    if let Some(raw_pos) = info.elapsed_time {
+                        let pos = tracker.calculate_adjusted_position(Duration::from_secs_f64(raw_pos));
+                        let _ = tx.blocking_send(AppEvent::PositionUpdated(pos));
                     }
                 }
             }

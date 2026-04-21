@@ -28,7 +28,7 @@ pub fn start(target_player: Arc<RwLock<Option<String>>>, tx: Sender<AppEvent>) {
             }
         };
 
-        let mut current_track: Option<TrackInfo> = None;
+        let mut tracker = super::common::TimelineTracker::new();
         let mut current_player_identity: Option<String> = None;
 
         loop {
@@ -36,12 +36,7 @@ pub fn start(target_player: Arc<RwLock<Option<String>>>, tx: Sender<AppEvent>) {
                 let identity = player.identity().to_string();
                 if Some(&identity) != current_player_identity.as_ref() {
                     current_player_identity = Some(identity);
-                    current_track = None; // Force track update on player switch
-                }
-
-                // Position updates drive real-time lyric scrolling.
-                if let Ok(position) = player.get_position() {
-                    let _ = tx.blocking_send(AppEvent::PositionUpdated(position));
+                    tracker.reset_player(); // Force track update on player switch
                 }
 
                 // Track-change detection — only emit when something differs.
@@ -65,14 +60,21 @@ pub fn start(target_player: Arc<RwLock<Option<String>>>, tx: Sender<AppEvent>) {
                     let final_artist = if artist.is_empty() { "Unknown Artist".to_string() } else { artist };
                     if !title.is_empty() {
                         let new_track = TrackInfo { artist: final_artist, title: title.clone(), album: album.clone(), length };
+                        let current_raw = player.get_position().unwrap_or(Duration::ZERO);
 
-                        if Some(&new_track) != current_track.as_ref() {
+                        if tracker.process_track_change(new_track.clone(), current_raw) {
                             info!("Track changed [RAW MPIS]: artist: {:?}, title: {:?}, album: {:?}", raw_artist, raw_title, album);
                             info!("Track changed [CLEANED]: {:?}", new_track);
-                            current_track = Some(new_track.clone());
                             let _ = tx.blocking_send(AppEvent::TrackChanged(new_track));
                         }
                     }
+                }
+
+                // Position updates drive real-time lyric scrolling.
+                // Moved after metadata polling to ensure offset is captured correctly upon track transition
+                if let Ok(raw_pos) = player.get_position() {
+                    let pos = tracker.calculate_adjusted_position(raw_pos);
+                    let _ = tx.blocking_send(AppEvent::PositionUpdated(pos));
                 }
             }
 

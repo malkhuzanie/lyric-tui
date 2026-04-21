@@ -15,12 +15,16 @@
 /// the `Arc<Mutex<…>>` directly.** All of that lives in `main.rs` which
 /// processes the returned `AppCommand`.  This makes the handler trivially
 /// unit-testable with no async runtime.
-use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+use crossterm::event::{KeyCode, KeyEvent, KeyModifiers, KeyEventKind};
 
 use crate::app::{App, AppCommand, AppMode, LyricAlignment, LyricLine, Provider, TrackInfo};
 
 /// Handle one key event.  Returns `(should_quit, optional_command)`.
 pub fn handle_key_event(key: KeyEvent, app: &mut App) -> (bool, Option<AppCommand>) {
+    if key.kind != KeyEventKind::Press {
+        return (false, None);
+    }
+
     // Ctrl-C is always a hard quit regardless of mode.
     if key.code == KeyCode::Char('c') && key.modifiers.contains(KeyModifiers::CONTROL) {
         return (true, Some(AppCommand::Quit));
