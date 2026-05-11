@@ -1,10 +1,7 @@
 use anyhow::{Context, Result};
-use directories::ProjectDirs;
 use reqwest::Client;
 use scraper::{Html, Selector};
 use serde_json::Value;
-use std::fs;
-use std::path::PathBuf;
 use std::sync::LazyLock;
 use std::time::Duration;
 use urlencoding::encode;
@@ -36,32 +33,18 @@ impl GeniusProvider {
     }
 }
 
-// ── Cache helpers ─────────────────────────────────────────────────────────────
-
-fn get_cache_path(artist: &str, title: &str) -> Option<PathBuf> {
-    let dirs = ProjectDirs::from("com", "tomato", "lyric-tui")?;
-    let cache_dir = dirs.cache_dir().to_owned();
-    fs::create_dir_all(&cache_dir).ok()?;
-
-    let safe_artist = artist.replace(|c: char| !c.is_alphanumeric(), "_");
-    let safe_title = title.replace(|c: char| !c.is_alphanumeric(), "_");
-    Some(cache_dir.join(format!("{safe_artist} - {safe_title}_genius.txt")))
-}
-
 // ── LyricProvider impl ────────────────────────────────────────────────────────
 
 #[async_trait::async_trait]
 impl LyricProvider for GeniusProvider {
     async fn fetch(&self, artist: &str, title: &str, force_refresh: bool) -> Result<Vec<LyricLine>> {
-        let cache_file = get_cache_path(artist, title);
-
         // Cache read
         if !force_refresh {
-            if let Some(ref path) = cache_file {
-                if let Ok(content) = fs::read_to_string(path) {
+            if let Some(content) = crate::providers::cache::read_cache(artist, title, "_genius") {
+                if let Some(path) = crate::providers::cache::get_cache_path(artist, title, "_genius") {
                     log::info!("Genius cache hit: {}", path.display());
-                    return Ok(plain_lines(&content));
                 }
+                return Ok(plain_lines(&content));
             }
         }
 
@@ -161,11 +144,7 @@ impl LyricProvider for GeniusProvider {
         let trimmed = lyrics.trim();
 
         // Cache write — non-fatal if it fails
-        if let Some(ref path) = cache_file {
-            if let Err(e) = fs::write(path, trimmed) {
-                log::warn!("Could not write Genius cache: {}", e);
-            }
-        }
+        crate::providers::cache::write_cache(artist, title, trimmed, "_genius", "Genius");
 
         Ok(plain_lines(trimmed))
     }

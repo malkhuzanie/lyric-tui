@@ -23,6 +23,7 @@ const HELP_SECTIONS: &[HelpSection] = &[
             ("k / Up", "Scroll lyrics up"),
             ("a", "Toggle auto-scroll"),
             ("c", "Toggle text alignment (Left/Center)"),
+            ("f", "Toggle full-screen mode"),
         ],
     },
     HelpSection {

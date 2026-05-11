@@ -10,7 +10,7 @@ use windows::Media::Control::{GlobalSystemMediaTransportControlsSessionManager, 
 
 const POLL_INTERVAL: Duration = Duration::from_millis(1000); // 1 second for windows to minimize overhead
 
-pub fn start(target_player: Arc<RwLock<Option<String>>>, tx: Sender<AppEvent>) {
+pub fn start(target_player: Arc<RwLock<(Option<String>, usize)>>, tx: Sender<AppEvent>) {
     thread::spawn(move || {
         // Initialize COM for the background thread
         let com_result = unsafe {
@@ -38,9 +38,19 @@ pub fn start(target_player: Arc<RwLock<Option<String>>>, tx: Sender<AppEvent>) {
 
         let mut tracker = super::common::TimelineTracker::new();
         let mut last_raw_pos: i64 = 0;
+        let mut last_gen: usize = 0;
 
         loop {
-            let target = target_player.read().unwrap().clone();
+            let (target, generation) = {
+                let guard = target_player.read().unwrap();
+                (guard.0.clone(), guard.1)
+            };
+            
+            if generation != last_gen {
+                last_gen = generation;
+                tracker.reset_player();
+            }
+
             let session_result = match target {
                 Some(ref target_id) => {
                     let mut found_session = Err(windows::core::Error::from(windows::core::HRESULT(0)));

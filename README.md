@@ -10,6 +10,7 @@ Written in Rust, it solves the fragility of traditional regex-based web scrapers
 - **Non-Blocking Asynchronous Architecture:** Built upon \tokio`, the interface maintains a fluid 60 frames per second, remaining entirely responsive whilst awaiting network requests.
 - **Robust Provider Fallbacks:** Relies upon the LRCLIB REST API by default for synchronised lyrics, providing the facility to switch dynamically to a Genius text fallback should the primary provider fail.
 - **Manual Search Facility:** Dynamically search for arbitrary tracks with ease.
+- **Immersive Full-Screen Mode:** Toggle an expansive, borderless display that strips away all chrome and tracking logic to present only the lyrics.
 - **Customisable Typography:** Toggle between left-aligned and centred text to suit your visual preference.
 - **Intelligent Local Caching:** Automatically caches retrieved lyrics within native XDG directories; this conserves bandwidth and ensures instantaneous loading upon subsequent playbacks.
 - **Contemporary Terminal Interface:** Built with `ratatui`, the application boasts a clean, rounded-border aesthetic, accompanied by progress bars, responsive text wrapping, and interactive pop-up menus.
@@ -67,6 +68,7 @@ A comprehensive help menu is built directly into the application. You can view i
 |`a`|Toggle auto-scroll on/off|
 |`p`|Toggle lyric provider (LRCLIB vs Genius)|
 |`c`|Toggle text alignment (Left / Center)|
+|`f`|Toggle full-screen mode|
 |`s`|Open manual search prompt. Type "Artist - Title" and press Enter.|
 |`l`|Open the runtime player selection menu to switch the media target.|
 |`r`|Force a network reload (bypasses cache)|

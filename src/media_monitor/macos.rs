@@ -9,11 +9,22 @@ use regex::Regex;
 
 const POLL_INTERVAL: Duration = Duration::from_millis(1000);
 
-pub fn start(target_player: Arc<RwLock<Option<String>>>, tx: Sender<AppEvent>) {
+pub fn start(target_player: Arc<RwLock<(Option<String>, usize)>>, tx: Sender<AppEvent>) {
     thread::spawn(move || {
         let mut tracker = super::common::TimelineTracker::new();
+        let mut last_gen: usize = 0;
 
         loop {
+            let (target, generation) = {
+                let guard = target_player.read().unwrap();
+                (guard.0.clone(), guard.1)
+            };
+            
+            if generation != last_gen {
+                last_gen = generation;
+                tracker.reset_player();
+            }
+
             // Using mediaremote-rs or now-playing equivalent
             #[cfg(target_os = "macos")]
             {
@@ -42,7 +53,8 @@ pub fn start(target_player: Arc<RwLock<Option<String>>>, tx: Sender<AppEvent>) {
                             length: info.duration.map(Duration::from_secs_f64),
                         };
 
-                        let current_raw = Duration::from_secs_f64(info.elapsed_time.unwrap_or(0.0));
+                        let current_raw = info.elapsed_time.map(Duration::from_secs_f64).unwrap_or(Duration::ZERO);
+
                         if tracker.process_track_change(new_track.clone(), current_raw) {
                             info!("Track changed [RAW MPIS]: artist: {:?}, title: {:?}", raw_artist, raw_title);
                             info!("Track changed [CLEANED]: {:?}", new_track);

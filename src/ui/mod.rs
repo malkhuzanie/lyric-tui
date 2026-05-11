@@ -51,18 +51,22 @@ pub fn wrap_text(text: &str, width: usize) -> Vec<String> {
 
 /// Entry point called from the main render loop.
 pub fn render(f: &mut Frame, app: &App) {
-    let chunks = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([
-            Constraint::Length(3), // header
-            Constraint::Min(0),    // lyrics (grows to fill)
-            Constraint::Length(3), // footer / progress
-        ])
-        .split(f.size());
+    if app.config.view.full_screen {
+        lyrics::render(f, app, f.size());
+    } else {
+        let chunks = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([
+                Constraint::Length(3), // header
+                Constraint::Min(0),    // lyrics (grows to fill)
+                Constraint::Length(3), // footer / progress
+            ])
+            .split(f.size());
 
-    header::render(f, app, chunks[0]);
-    lyrics::render(f, app, chunks[1]);
-    footer::render(f, app, chunks[2]);
+        header::render(f, app, chunks[0]);
+        lyrics::render(f, app, chunks[1]);
+        footer::render(f, app, chunks[2]);
+    }
 
     match app.mode() {
         AppMode::Normal => {}

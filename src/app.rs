@@ -42,6 +42,7 @@ pub struct ViewConfig {
     pub playhead_symbol: String,
     pub max_width: u16,
     pub max_lines: u16,
+    pub full_screen: bool,
 }
 
 impl Default for ViewConfig {
@@ -52,6 +53,7 @@ impl Default for ViewConfig {
             playhead_symbol: "▶ ".to_string(),
             max_width: 80,
             max_lines: 24,
+            full_screen: false,
         }
     }
 }
@@ -102,7 +104,12 @@ pub enum AppEvent {
     Input(KeyEvent),
     TrackChanged(TrackInfo),
     PositionUpdated(Duration),
-    LyricsFetched(Vec<LyricLine>),
+    /// Lyrics have been fetched. Includes parsed lines and optionally the raw text
+    /// for dual-caching purposes (when manual search needs to cache under alternate metadata).
+    LyricsFetched {
+        lines: Vec<LyricLine>,
+        raw_text: Option<String>,
+    },
     Tick,
     PlayersDiscovered(Vec<String>),
 }
@@ -116,10 +123,15 @@ pub enum AppEvent {
 #[derive(Debug)]
 pub enum AppCommand {
     /// Fetch lyrics for the given artist/title, optionally bypassing the cache.
+    /// `alternate_artist` and `alternate_title` are optional metadata to cache the result
+    /// under (in addition to the primary metadata), used for dual-caching when manual
+    /// search finds lyrics that should also be cached under the player's original metadata.
     FetchLyrics {
         artist: String,
         title: String,
         force_refresh: bool,
+        alternate_artist: Option<String>,
+        alternate_title: Option<String>,
     },
     /// Atomically switch the OS media monitor to a new player identity.
     SwitchPlayer(String),

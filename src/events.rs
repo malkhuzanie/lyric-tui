@@ -52,6 +52,12 @@ fn handle_normal(key: KeyEvent, app: &mut App) -> (bool, Option<AppCommand>) {
         // ── Auto-scroll toggle ────────────────────────────────────────────────
         KeyCode::Char('a') => app.toggle_auto_scroll(),
 
+        // ── Full-screen toggle ────────────────────────────────────────────────
+        KeyCode::Char('f') => {
+            log::info!("Toggled full-screen mode: {}", !app.config.view.full_screen);
+            app.config.view.full_screen = !app.config.view.full_screen;
+        }
+
         // ── Alignment toggle ──────────────────────────────────────────────────
         KeyCode::Char('c') => {
             app.config.view.alignment = match app.config.view.alignment {
@@ -81,6 +87,8 @@ fn handle_normal(key: KeyEvent, app: &mut App) -> (bool, Option<AppCommand>) {
                         artist,
                         title,
                         force_refresh: false,
+                        alternate_artist: None,
+                        alternate_title: None,
                     }),
                 );
             }
@@ -99,6 +107,8 @@ fn handle_normal(key: KeyEvent, app: &mut App) -> (bool, Option<AppCommand>) {
                         artist,
                         title,
                         force_refresh: true,
+                        alternate_artist: None,
+                        alternate_title: None,
                     }),
                 );
             }
@@ -171,21 +181,51 @@ fn handle_search(key: KeyEvent, app: &mut App) -> (bool, Option<AppCommand>) {
 
                 // Update playback track immediately so the header shows the
                 // searched-for song while lyrics are loading.
-                app.playback.track = Some(TrackInfo {
-                    artist: artist.clone(),
-                    title: title.clone(),
-                    album: String::new(),
-                    length: None,
-                });
+                // Preserve all metadata from the currently playing track (if any)
+                // to ensure cache consistency: lyrics are cached under the player's
+                // canonical metadata, allowing cache hits even with manual search.
+                if let Some(current_track) = &app.playback.track {
+                    // Preserve the player's original metadata to maintain consistent
+                    // cache keys. This allows manual search results to be reused when
+                    // the same track is later detected by the media monitor.
+                    app.playback.track = Some(TrackInfo {
+                        artist: current_track.artist.clone(),
+                        title: current_track.title.clone(),
+                        album: current_track.album.clone(),
+                        length: current_track.length,
+                    });
+                } else {
+                    // No track currently playing — use search query metadata.
+                    app.playback.track = Some(TrackInfo {
+                        artist: artist.clone(),
+                        title: title.clone(),
+                        album: String::new(),
+                        length: None,
+                    });
+                }
                 app.set_status_lyric(format!("Searching for {} — {}…", artist, title));
                 app.view.auto_scroll = false;
+
+                // When a manual search finds lyrics, we want to cache them under BOTH
+                // the search query metadata AND the player's original metadata (if available).
+                // This way, future automatic playback of the same song will find the cache
+                // using the player's metadata, avoiding a redundant network request.
+                let (alternate_artist, alternate_title) = if let Some(current_track) = &app.playback.track {
+                    // We're searching for a different song than what's playing, or the same song
+                    // with cleaned-up metadata. Cache under both the search query and original.
+                    (Some(current_track.artist.clone()), Some(current_track.title.clone()))
+                } else {
+                    (None, None)
+                };
 
                 return (
                     false,
                     Some(AppCommand::FetchLyrics {
                         artist,
                         title,
-                        force_refresh: true,
+                        force_refresh: false,
+                        alternate_artist,
+                        alternate_title,
                     }),
                 );
             }

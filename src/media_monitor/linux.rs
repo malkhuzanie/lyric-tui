@@ -18,7 +18,7 @@ use regex::Regex;
 
 const POLL_INTERVAL: Duration = Duration::from_millis(200);
 
-pub fn start(target_player: Arc<RwLock<Option<String>>>, tx: Sender<AppEvent>) {
+pub fn start(target_player: Arc<RwLock<(Option<String>, usize)>>, tx: Sender<AppEvent>) {
     thread::spawn(move || {
         let finder = match PlayerFinder::new() {
             Ok(f) => f,
@@ -30,9 +30,20 @@ pub fn start(target_player: Arc<RwLock<Option<String>>>, tx: Sender<AppEvent>) {
 
         let mut tracker = super::common::TimelineTracker::new();
         let mut current_player_identity: Option<String> = None;
+        let mut last_gen: usize = 0;
 
         loop {
-            if let Some(player) = find_player(&finder, &target_player, &tx) {
+            let (target, generation) = {
+                let guard = target_player.read().unwrap();
+                (guard.0.clone(), guard.1)
+            };
+            
+            if generation != last_gen {
+                last_gen = generation;
+                tracker.reset_player();
+            }
+
+            if let Some(player) = find_player(&finder, target, &tx) {
                 let identity = player.identity().to_string();
                 if Some(&identity) != current_player_identity.as_ref() {
                     current_player_identity = Some(identity);
@@ -85,7 +96,7 @@ pub fn start(target_player: Arc<RwLock<Option<String>>>, tx: Sender<AppEvent>) {
 
 fn find_player<'a>(
     finder: &'a PlayerFinder,
-    target_player_arc: &Arc<RwLock<Option<String>>>,
+    target: Option<String>,
     tx: &Sender<AppEvent>,
 ) -> Option<mpris::Player> {
     let mut available_players = vec![];
@@ -96,7 +107,6 @@ fn find_player<'a>(
     }
     let _ = tx.blocking_send(AppEvent::PlayersDiscovered(available_players));
 
-    let target = target_player_arc.read().unwrap().clone();
     match target {
         Some(name) => finder.find_by_name(&name).ok(),
         None => finder

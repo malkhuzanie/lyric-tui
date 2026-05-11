@@ -62,7 +62,7 @@ fn build_lyric_lines<'a>(
     has_sync: bool,
     alignment: &crate::app::LyricAlignment,
 ) -> Vec<Line<'a>> {
-    let show_chrome = matches!(alignment, crate::app::LyricAlignment::Left);
+    let show_chrome = matches!(alignment, crate::app::LyricAlignment::Left) && !app.config.view.full_screen;
 
     let active_line_idx = if app.view.auto_scroll {
         app.playback.active_line
@@ -121,6 +121,10 @@ fn build_lyric_lines<'a>(
 // ── Block / border builder ────────────────────────────────────────────────────
 
 fn build_block(app: &App) -> Block<'static> {
+    if app.config.view.full_screen {
+        return Block::default();
+    }
+
     let left_title = Span::styled(" LYRICS ", theme::hint_desc());
 
     let autoscroll_span = if app.view.auto_scroll {

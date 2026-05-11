@@ -113,46 +113,112 @@ fn process_command(
     cmd: AppCommand,
     app: &App,
     tx: &mpsc::Sender<AppEvent>,
-    shared_target_player: &Arc<RwLock<Option<String>>>,
+    shared_target_player: &Arc<RwLock<(Option<String>, usize)>>,
 ) -> bool {
     match cmd {
         AppCommand::Quit => {
             return true;
         }
 
-        AppCommand::FetchLyrics { artist, title, force_refresh } => {
+        AppCommand::FetchLyrics {
+            artist,
+            title,
+            force_refresh,
+            alternate_artist,
+            alternate_title,
+        } => {
             let provider = app.config.view.default_provider.clone();
             let timeout_secs = app.config.core.network_timeout_secs; 
             let tx_clone = tx.clone();
             tokio::spawn(async move {
-                let fetched = fetch_lyrics(provider, &artist, &title, force_refresh, timeout_secs)
-                    .await
+                let (clean_artist, clean_title) = crate::providers::sanitiser::sanitize_metadata(&artist, &title);
+                
+                if clean_artist != artist || clean_title != title {
+                    log::info!("Sanitised metadata for fetching: artist={:?}, title={:?}", clean_artist, clean_title);
+                }
+
+                let fetched_result = fetch_lyrics(provider.clone(), &clean_artist, &clean_title, force_refresh, timeout_secs).await;
+
+                let fetched = fetched_result
                     .unwrap_or_else(|e| {
                         log::error!("Failed to fetch lyrics (timeout: {}s): {}", timeout_secs, e);
                         
                         let error_msg = format!("Network error (gave up after {}s). Press 'r' to retry.", timeout_secs);
                         vec![LyricLine { start_time: None, text: error_msg }]
                     });
-                let _ = tx_clone.send(AppEvent::LyricsFetched(fetched)).await;
+
+                // If alternate metadata provided (manual search case), write cache entry under
+                // the original player metadata as well, enabling future cache hits via the
+                // player's metadata path.
+                if let (Some(alt_artist), Some(alt_title)) = (alternate_artist, alternate_title) {
+                    match provider {
+                        crate::app::Provider::Lrclib => {
+                            // Use the public write_cache helper from lrclib provider
+                            let lyrics_text = fetched
+                                .iter()
+                                .map(|line| {
+                                    if let Some(time) = line.start_time {
+                                        let millis = time.as_millis() as u64;
+                                        let min = millis / 60_000;
+                                        let sec = (millis % 60_000) / 1_000;
+                                        let ms = millis % 1_000;
+                                        format!("[{:02}:{:02}.{:03}]{}", min, sec, ms, line.text)
+                                    } else {
+                                        line.text.clone()
+                                    }
+                                })
+                                .collect::<Vec<_>>()
+                                .join("\n");
+                            crate::providers::cache::write_cache(&alt_artist, &alt_title, &lyrics_text, "", "LRCLIB");
+                            log::info!("Dual-cached lyrics under alternate metadata: {} – {}", alt_artist, alt_title);
+                        }
+                        crate::app::Provider::Genius => {
+                            let lyrics_text = fetched
+                                .iter()
+                                .map(|line| line.text.clone())
+                                .collect::<Vec<_>>()
+                                .join("\n");
+                            crate::providers::cache::write_cache(&alt_artist, &alt_title, &lyrics_text, "_genius", "Genius");
+                            log::info!("Dual-cached lyrics under alternate metadata: {} – {}", alt_artist, alt_title);
+                        }
+                    }
+                }
+
+                let _ = tx_clone
+                    .send(AppEvent::LyricsFetched {
+                        lines: fetched,
+                        raw_text: None,
+                    })
+                    .await;
             });
         }
 
         AppCommand::SwitchPlayer(name) => {
             match shared_target_player.write() {
-                Ok(mut guard) => *guard = Some(name),
+                Ok(mut guard) => {
+                    guard.0 = Some(name);
+                    guard.1 = guard.1.wrapping_add(1);
+                },
                 Err(poisoned) => {
                     log::error!("target_player mutex poisoned — recovering");
-                    *poisoned.into_inner() = Some(name);
+                    let mut guard = poisoned.into_inner();
+                    guard.0 = Some(name);
+                    guard.1 = guard.1.wrapping_add(1);
                 }
             }
         }
 
         AppCommand::ClearPlayerTarget => {
             match shared_target_player.write() {
-                Ok(mut guard) => *guard = None,
+                Ok(mut guard) => {
+                    guard.0 = None;
+                    guard.1 = guard.1.wrapping_add(1);
+                },
                 Err(poisoned) => {
                     log::error!("target_player mutex poisoned — recovering");
-                    *poisoned.into_inner() = None;
+                    let mut guard = poisoned.into_inner();
+                    guard.0 = None;
+                    guard.1 = guard.1.wrapping_add(1);
                 }
             }
         }
@@ -192,7 +258,7 @@ async fn main() -> anyhow::Result<()> {
 
     log::info!("Target player from args: {:?}", target_player);
 
-    let shared_target_player = Arc::new(RwLock::new(target_player));
+    let shared_target_player = Arc::new(RwLock::new((target_player, 0)));
 
     // ── Async channels ───────────────────────────────────────────────────────
     let (tx, mut rx) = mpsc::channel::<AppEvent>(64);
@@ -236,10 +302,14 @@ async fn main() -> anyhow::Result<()> {
 
     loop {
         // Keep viewport height in sync with terminal size.
-        // Header (3 rows) + footer (3 rows) = 6 rows of chrome.
-        // Block border takes 2 rows, so available is size.height - 8.
         let size = terminal.size()?;
-        let available_height = size.height.saturating_sub(8);
+        let available_height = if app.config.view.full_screen {
+            size.height
+        } else {
+            // Header (3 rows) + footer (3 rows) = 6 rows of chrome.
+            // Block border takes 2 rows, so available is size.height - 8.
+            size.height.saturating_sub(8)
+        };
         let new_height = available_height.min(app.config.view.max_lines);
         
         if new_height != app.view.viewport_height {
@@ -285,7 +355,13 @@ async fn main() -> anyhow::Result<()> {
                     app.view.auto_scroll = true;
 
                     process_command(
-                        AppCommand::FetchLyrics { artist, title, force_refresh: false },
+                        AppCommand::FetchLyrics {
+                            artist,
+                            title,
+                            force_refresh: false,
+                            alternate_artist: None,
+                            alternate_title: None,
+                        },
                         &app,
                         &tx,
                         &shared_target_player,
@@ -300,10 +376,14 @@ async fn main() -> anyhow::Result<()> {
                 }
 
                 // ── Lyrics arrived ────────────────────────────────────────────
-                AppEvent::LyricsFetched(lyric_lines) => {
-                    log::info!("Lyrics updated ({} lines)", lyric_lines.len());
-                    app.lyrics = lyric_lines;
+                AppEvent::LyricsFetched { lines, raw_text: _ } => {
+                    log::info!("Lyrics updated ({} lines)", lines.len());
+                    app.lyrics = lines;
                     app.recalculate_scroll();
+                    // Re-enable auto-scroll when lyrics arrive, allowing position updates to
+                    // automatically synchronise the visible lyrics (particularly important for
+                    // manual search where auto_scroll was deliberately disabled during typing).
+                    app.view.auto_scroll = true;
                     dirty = true;
                 }
 

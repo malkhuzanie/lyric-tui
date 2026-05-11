@@ -1,10 +1,7 @@
 use anyhow::Result;
-use directories::ProjectDirs;
 use regex::Regex;
 use reqwest::Client;
 use serde::Deserialize;
-use std::fs;
-use std::path::PathBuf;
 use std::sync::LazyLock;
 use std::time::Duration;
 
@@ -37,18 +34,6 @@ impl LrclibProvider {
                 .expect("Failed to build reqwest client"),
         }
     }
-}
-
-// ── Cache helpers ─────────────────────────────────────────────────────────────
-
-fn get_cache_path(artist: &str, title: &str) -> Option<PathBuf> {
-    let dirs = ProjectDirs::from("com", "tomato", "lyric-tui")?;
-    let cache_dir = dirs.cache_dir().to_owned();
-    fs::create_dir_all(&cache_dir).ok()?;
-
-    let safe_artist = artist.replace(|c: char| !c.is_alphanumeric(), "_");
-    let safe_title = title.replace(|c: char| !c.is_alphanumeric(), "_");
-    Some(cache_dir.join(format!("{safe_artist} - {safe_title}.txt")))
 }
 
 // ── LRC parser ────────────────────────────────────────────────────────────────
@@ -103,15 +88,13 @@ pub fn parse_lrc(lrc: &str) -> Vec<LyricLine> {
 #[async_trait::async_trait]
 impl LyricProvider for LrclibProvider {
     async fn fetch(&self, artist: &str, title: &str, force_refresh: bool) -> Result<Vec<LyricLine>> {
-        let cache_file = get_cache_path(artist, title);
-
         // Cache read
         if !force_refresh {
-            if let Some(ref path) = cache_file {
-                if let Ok(content) = fs::read_to_string(path) {
+            if let Some(content) = crate::providers::cache::read_cache(artist, title, "") {
+                if let Some(path) = crate::providers::cache::get_cache_path(artist, title, "") {
                     log::info!("LRCLIB cache hit: {}", path.display());
-                    return Ok(parse_lrc(&content));
                 }
+                return Ok(parse_lrc(&content));
             }
         }
 
@@ -189,11 +172,7 @@ impl LyricProvider for LrclibProvider {
             .unwrap_or_else(|| "Instrumental / No lyrics found in LRCLIB database.".to_string());
 
         // Cache write — non-fatal if it fails
-        if let Some(ref path) = cache_file {
-            if let Err(e) = fs::write(path, &lyrics_text) {
-                log::warn!("Could not write LRCLIB cache: {}", e);
-            }
-        }
+        crate::providers::cache::write_cache(artist, title, &lyrics_text, "", "LRCLIB");
 
         Ok(parse_lrc(&lyrics_text))
     }
