@@ -4,6 +4,18 @@
 
 Written in Rust, it solves the fragility of traditional regex-based web scrapers by utilizing the highly reliable LRCLIB API (with fallback capability to Genius). It connects directly to your desktop's native media controllers via MPRIS (Linux), GSMTC (Windows), and MediaRemote (macOS).
 
+## Showcase
+
+<div align="center">
+  <img src="docs/assets/default_view.png" width="48%" alt="lyric-tui default view" />
+  <img src="docs/assets/nord_theme.png" width="48%" alt="lyric-tui with Nord theme" />
+  <br>
+  <br>
+  <img src="docs/assets/fullscreen_view.png" width="45%" alt="lyric-tui full-screen mode" />
+</div>
+
+*Top: Default view (left) and the customisable Nord theme (right). Bottom: The distraction-free full-screen mode toggled via `f`.*
+
 ## Features
 
 - **Karaoke-Style Auto-Scrolling:** Parses time-synchronised \.lrc` files to scroll automatically and highlight the active lyric in real time.
@@ -25,9 +37,17 @@ Written in Rust, it solves the fragility of traditional regex-based web scrapers
 
 Ensure you have Rust and Cargo installed. (Linux users will also need D-Bus development headers, e.g., `libdbus-1-dev`).
 
+### Option 1: Install via Crates.io (Recommended)
+You can instantly install the application globally from the official Rust package registry:
+```bash
+cargo install lyric-tui
 ```
+Once installed, the `lyt` executable will be available in your `~/.cargo/bin` path.
+
+### Option 2: Build from Source
+```bash
 # Clone the repository
-git clone [https://gitlab.com/malkhuzanie/lyric-tui.git](https://gitlab.com/malkhuzanie/lyric-tui.git)
+git clone https://gitlab.com/malkhuzanie/lyric-tui.git
 cd lyric-tui
 
 # Build the release binary

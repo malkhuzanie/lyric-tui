@@ -243,20 +243,18 @@ async fn main() -> anyhow::Result<()> {
     }
     log::info!("=== Starting lyric-tui ===");
 
+    // ── CLI args ─────────────────────────────────────────────────────────────
+    let cli_args = Cli::parse();
+    let target_player = cli_args.target_player;
+
+    log::info!("Target player from args: {:?}", target_player);
+
     // ── Terminal setup ───────────────────────────────────────────────────────
     enable_raw_mode()?;
     let mut stdout = io::stdout();
     execute!(stdout, EnterAlternateScreen)?;
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
-
-    // ── CLI args ─────────────────────────────────────────────────────────────
-    // let args: Vec<String> = env::args().collect();
-    // let target_player = args.get(1).cloned();
-    let cli_args = Cli::parse();
-    let target_player = cli_args.target_player;
-
-    log::info!("Target player from args: {:?}", target_player);
 
     let shared_target_player = Arc::new(RwLock::new((target_player, 0)));
 
